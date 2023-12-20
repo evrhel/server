@@ -1,0 +1,197 @@
+/*body {
+	background: linear-gradient(0deg, #202020 0%, #404040 100%) fixed;
+	font-family: Helvetica, sans-serif;
+}
+
+h1, p, ul {
+	color:  white;
+}*/
+
+html {
+	height:100%;
+	background: #202020;
+	font-family: sans-serif;
+	transition: 0.5s;
+	scroll-behavior: smooth;
+}
+
+* {
+	margin: 0px;
+	padding: 0px;
+}
+
+nav {
+	width: 100%;
+	vertical-align: top;
+	margin-bottom: 0px;
+	position: fixed;
+}
+
+nav ul {
+	text-align: left;
+	background: #191919;
+}
+
+nav ul li {
+	display: inline-block;
+}
+
+nav ul li a {
+	padding: 18px;
+	text-transform:uppercase;
+	font-size: 18px;
+	text-decoration: none;
+	display: block;
+	color: #eee;
+	transition: 0.3s;
+}
+
+nav ul li a:hover {
+	background: #202020;
+	transition: 0.3s;
+}
+
+body {
+	color: #eee;
+}
+
+body p {
+	padding-left: 20px;
+	padding-bottom: 20px;
+}
+
+body h1 {
+	padding: 20px;
+	padding-top: 75px;
+}
+
+body h2 {
+	padding-left: 20px;
+	padding-bottom: 20px;
+}
+
+body h3 {
+	padding-left: 20px;
+	padding-bottom: 20px;
+	font-style: italic;
+}
+
+body code {
+	padding-left: 20px;
+}
+
+pre.code {
+    display: table;
+    table-layout: fixed;
+   	width: 700px;
+/*  white-space: pre-wrap;*/
+    color: #ddd;
+    background: #151515;
+    border: 5px solid #252525;
+    border-style: inset;
+    margin-left: 10px;
+}
+pre.code::before {
+    counter-reset: linenum;
+}
+pre.code span.tr {
+    display: table-row;
+    counter-increment: linenum;
+}
+pre.code span.th {
+    display: table-cell;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    color: #eee;
+}
+pre.code span.th::before {
+    content: counter(linenum);
+    text-align: right;
+    display: block;
+    padding-right: 10px;
+    background: #101010;
+}
+pre.code span.th {
+    width: 4em;
+}
+pre.code code {
+    display: table-cell;
+}
+
+.inline-code {
+	padding-left: 20px;
+}
+
+body .body-list {
+	width: 150px;
+	text-align: left;
+	padding: 10px;
+	font-style: italic;
+	display: block;
+	color: #eee;
+	transition: 0.3s;
+	margin-left: 15px;
+	margin-bottom: 20px;
+	background: #202020;
+	margin-top: 20px;
+	text-decoration: underline;
+}
+
+.body-link {
+	color: #aaaaaa;
+	font-style: normal;
+	text-decoration: none;
+	transition: 0.3s;
+}
+
+.body-link:hover {
+	color: orange;
+	transition: 0.3s;
+}
+
+body .body-list:hover {
+	/*background: #393939;*/
+	transition: 0.3s;
+	color: orange;
+}
+
+.content {
+	padding-left: 15px;
+}
+
+.keyword {
+	color: cornflowerblue;
+}
+
+.primitive {
+	color: rgb(255, 127, 255);
+}
+
+.type {
+	color: limegreen;
+}
+
+.comment {
+	color: #999;
+}
+
+.number {
+	color: orange;
+}
+
+.macro {
+	color: mediumpurple;
+}
+
+.function {
+	color: palegoldenrod;
+}
+
+.define {
+	color: orangered;
+}
+
+.string {
+	color: goldenrod;
+}
