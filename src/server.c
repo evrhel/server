@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 #include "http.h"
 #include "stream.h"
@@ -140,7 +141,7 @@ static void serve() {
     
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        fprintf(stderr, "Fatal: Could not create socket\n");
+        fprintf(stderr, "Fatal: Could not create socket: %s\n",  strerror(errno));
         exit(1);
     }
 
@@ -150,21 +151,20 @@ static void serve() {
     addr.sin_port = htons(PORT);
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        fprintf(stderr, "Fatal: Could not bind socket\n");
+        fprintf(stderr, "Fatal: Could not bind socket: %s\n", strerror(errno));
         exit(1);
     }
 
-    fprintf(stderr, "Ready!\n");
     while (1) {
         if (listen(server_fd, MAX_PENDING) < 0) {
-            fprintf(stderr, "Fatal: Could not listen\n");
+            fprintf(stderr, "Fatal: Could not listen: %s\n", strerror(errno));
             exit(1);
         }
 
         client_addr_len = sizeof(client_addr);
         client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
         if (client_fd < 0) {
-            fprintf(stderr, "Warning: failed to accept connection\n");
+            fprintf(stderr, "Warning: failed to accept connection: %s\n", strerror(errno));
             continue;
         }
         
