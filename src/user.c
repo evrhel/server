@@ -6,9 +6,11 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#ifndef NO_OPENSSL
 #include <openssl/sha.h>
 #include <openssl/rand.h>
 #include <openssl/evp.h>
+#endif
 
 #define USER_LEN_MIN 4
 #define USER_LEN 32
@@ -27,8 +29,10 @@ static int user_fd = -1;
 static struct flock user_lock;
 
 void init_crypto() {
+#ifndef NO_OPENSSL
     OpenSSL_add_all_algorithms();
     RAND_poll();
+#endif
 }
 
 static int acquire_user_store() {
