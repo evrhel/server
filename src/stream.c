@@ -11,12 +11,13 @@ static int is_control(char c) {
     return c < 0x20 || c >= 0x7f; // ASCII control characters
 }
 
-char *stream_readline(int fd, line_mode_t mode) {
+char *stream_readline(int fd, line_mode_t mode, SSL *ssl) {
     char c = 0;
     int i;
     char *buf, *tmp;
     int len;
     char last;
+    int rc;
 
     if (mode != LINE_CRLF && mode != LINE_LF && mode != LINE_CR) return NULL;
 
@@ -38,7 +39,8 @@ char *stream_readline(int fd, line_mode_t mode) {
         
         // read a character
         last = c;
-        if (read(fd, &c, 1) < 0) {
+        rc = ssl ? SSL_read(ssl, &c, 1) : read(fd, &c, 1);
+        if (rc < 0) {
             free(buf);
             return NULL;
         }

@@ -1,3 +1,7 @@
 server
 server.dSYM
 .DS_Store
+thirdparty/sqlite
+*.o
+*.db
+*.pem

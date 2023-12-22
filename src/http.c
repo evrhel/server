@@ -68,14 +68,14 @@ static int parse_startline(char *line, struct http_request *req) {
     return 0;
 }
 
-struct http_request *http_request_read(int fd) {
+struct http_request *http_request_read(int fd, SSL *ssl) {
     char *line;
     struct http_request *req;
     size_t len;
     char *key, *value;
     char *tmp;
 
-    line = stream_readline(fd, LINE_CRLF);
+    line = stream_readline(fd, LINE_CRLF, ssl);
     if (!line) return NULL;
 
     req = calloc(1, sizeof(struct http_request));
@@ -89,7 +89,7 @@ struct http_request *http_request_read(int fd) {
     for (;;) {
         free(line);
 
-        line = stream_readline(fd, LINE_CRLF);
+        line = stream_readline(fd, LINE_CRLF, ssl);
         if (!line) {
             http_request_free(req);
             return NULL;
@@ -203,12 +203,15 @@ void http_response_release(struct http_response *res) {
     http_header_free(res->headers);
 }
 
-void http_response_write(int fd, struct http_response *res) {
+void http_response_write(int fd, struct http_response *res, SSL *ssl) {
     char buf[256];
     struct http_header *header;
 
     snprintf(buf, sizeof(buf), "%s %d %s\r\n", res->version, res->status, res->reason);
-    write(fd, buf, strlen(buf));
+    if (ssl)
+        SSL_write(ssl, buf, strlen(buf));
+    else
+        write(fd, buf, strlen(buf));
 
     if (res->content_length > 0)
         snprintf(buf, sizeof(buf), "Content-Length: %d\r\n", res->content_length);
@@ -225,14 +228,24 @@ void http_response_write(int fd, struct http_response *res) {
     header = res->headers;
     while (header) {
         snprintf(buf, sizeof(buf), "%s: %s\r\n", header->key, header->value);
-        write(fd, buf, strlen(buf));
+        if (ssl)
+            SSL_write(ssl, buf, strlen(buf));
+        else
+            write(fd, buf, strlen(buf));
         header = header->next;
     }
 
-    write(fd, "\r\n", 2);
+    if (ssl)
+        SSL_write(ssl, "\r\n", 2);
+    else
+        write(fd, "\r\n", 2);
 
-    if (res->body)
-        write(fd, res->body, res->content_length);
+    if (res->body) {
+        if (ssl)
+            SSL_write(ssl, res->body, res->content_length);
+        else
+            write(fd, res->body, res->content_length);
+    }
 }
 
 char *http_header_get(struct http_header *headers, const char *key) {

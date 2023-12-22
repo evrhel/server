@@ -4,18 +4,20 @@
 #include <stdint.h>
 
 typedef enum {
-    USER_OK,
-    USER_NOT_FOUND,
-    USER_WRONG_PASSWORD,
-    USER_ALREADY_EXISTS,
-    USER_ERROR
+    USER_OK,                // everything is ok
+    USER_NOT_FOUND,         // the user does not exist
+    USER_WRONG_PASSWORD,    // the password is wrong
+    USER_INVALID_PASSWORD,  // the password is invalid (e.g. too short)
+    USER_INVALID_USERNAME,  // the username is invalid (e.g. too short)
+    USER_ALREADY_EXISTS,    // the user already exists
+    USER_ERROR              // some other error
 } user_status_t;
 
-void init_crypto();
+void init_user_table();
 
-user_status_t add_user(const char *username, const char *password);
+user_status_t add_user(const char *username, char *password);
 user_status_t remove_user(const char *username);
 user_status_t change_password(const char *username, const char *old_password, const char *new_password);
-user_status_t login(const char *username, const char *password, uint64_t *token);
+user_status_t login(const char *username, char *password, uint64_t *token);
 
 #endif

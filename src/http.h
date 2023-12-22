@@ -4,6 +4,8 @@
 #define HTTP10 "HTTP/1.0"
 #define HTTP11 "HTTP/1.1"
 
+#include <openssl/ssl.h>
+
 typedef enum {
     GET,
     POST,
@@ -45,13 +47,13 @@ struct http_response {
     const char *connection;
 };
 
-struct http_request *http_request_read(int fd);
+struct http_request *http_request_read(int fd, SSL *ssl);
 void http_request_print(struct http_request *req);
 void http_request_free(struct http_request *req);
 
 void http_response_init(struct http_response *res);
 void http_response_release(struct http_response *res);
-void http_response_write(int fd, struct http_response *res);
+void http_response_write(int fd, struct http_response *res, SSL *ssl);
 
 char *http_header_get(struct http_header *headers, const char *key);
 char *http_header_dup(struct http_header *headers, const char *key);
