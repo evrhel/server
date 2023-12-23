@@ -94,6 +94,7 @@ static void user_help() {
     fprintf(stderr, "  add <username>              Add a user\n");
     fprintf(stderr, "  remove <username>           Remove a user\n");
     fprintf(stderr, "  login <username>            Login as a user\n");
+    fprintf(stderr, "  validate <token>            Validate a token\n");
     fprintf(stderr, "  help                        Display this help message\n");
 }
 
@@ -102,6 +103,8 @@ static void handle_args(int argc, char *argv[]) {
     char *password;
     user_status_t status;
     char *action;
+    char *token;
+    struct userinfo ui;
 
     WEBROOT = DEF_WEBROOT;
 
@@ -200,7 +203,6 @@ static void handle_args(int argc, char *argv[]) {
                 fprintf(stderr, "User removed successfully\n");
                 exit(0);
             } else if (!strcmp(action, "login")) {
-                uint64_t token;
 
                 if (i + 1 >= argc) {
                     fprintf(stderr, "Fatal: -u login requires a username\n");
@@ -233,6 +235,27 @@ static void handle_args(int argc, char *argv[]) {
                 }
 
                 fprintf(stderr, "Logged in successfully\n");
+                fprintf(stderr, "Token: %s\n", token);
+
+                free(token);
+                exit(0);
+            } else if (!strcmp(argv[i], "validate")) {
+                if (i + 1 >= argc) {
+                    fprintf(stderr, "Fatal: -u validate requires a token\n");
+                    exit(1);
+                }
+
+                status = validate_token(argv[++i], &ui);
+
+                if (!status) {
+                    fprintf(stderr, "Fatal: Invalid token\n");
+                    exit(1);
+                }
+
+                fprintf(stderr, "Token is valid\n");
+                fprintf(stderr, "Username: %s\n", ui.username);
+                fprintf(stderr, "Last interaction: %lld\n", ui.timestamp);
+
                 exit(0);
             } else if (!strcmp(argv[i], "help")) {
                 user_help();
@@ -302,7 +325,7 @@ static SSL_CTX *create_ssl_context() {
 
 int main(int argc, char *argv[]) {
     init_crypto();
-    init_user_table();
+    init_tables();
 
     handle_args(argc, argv);
 
