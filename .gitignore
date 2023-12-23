@@ -8,6 +8,7 @@ server.dSYM
 *.pem
 *.cache
 *.log
+*.tmp
 .deps
 .dirstamp
 build-aux

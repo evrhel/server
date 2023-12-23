@@ -42,6 +42,7 @@ static int MAX_PENDING = DEF_MAX_PENDING;
 static char *CERT = DEF_CERT;
 static char *KEY = DEF_KEY;
 static int HTTP = 0;
+static int FORCE_HTTPS = 0;
 
 static SSL_CTX *ssl_ctx = NULL;
 
@@ -84,6 +85,7 @@ static void display_help() {
     fprintf(stderr, "  -c, --cert <path>              Path to certificate (default: %s)\n", DEF_CERT);
     fprintf(stderr, "  -k, --key <path>               Path to private key (default: %s)\n", DEF_KEY);
     fprintf(stderr, "  -t, --http                     Use HTTP instead of HTTPS\n");
+    fprintf(stderr, "  -s, --https                    Force HTTPS\n");
 }
 
 static void user_help() {
@@ -256,6 +258,8 @@ static void handle_args(int argc, char *argv[]) {
             KEY = argv[++i];
         } else if (!strcmp(argv[i], "-t") || !strcmp(argv[i], "--http")) {
             HTTP = 1;
+        } else if (!strcmp(argv[i], "-s") || !strcmp(argv[i], "--https")) {
+            HTTP = 0;
         } else {
             fprintf(stderr, "Fatal: unknown argument: %s\n", argv[i]);
             display_help();
@@ -301,8 +305,6 @@ int main(int argc, char *argv[]) {
     init_user_table();
 
     handle_args(argc, argv);
-    if (PORT < 0)
-        PORT = HTTP ? 80 : 443;
 
     signal(SIGINT, sigint_handler);
     signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE (broken pipe)
@@ -328,12 +330,26 @@ static void serve() {
     pid_t pid;
     SSL *ssl;
 
-    fprintf(stderr, "Starting server on port %d\n", PORT);
 
     if (HTTP)
         ssl_ctx = 0;
-    else
+    else {
         ssl_ctx = create_ssl_context();
+        if (!ssl_ctx) {
+            if (FORCE_HTTPS) {
+                fprintf(stderr, "Fatal: Could not create SSL context\n");
+                exit(1);
+            }
+            HTTP = 1;
+            fprintf(stderr, "Warning: Could not create SSL context, using HTTP instead\n");
+        }
+    }
+
+    if (PORT < 0)
+        PORT = HTTP ? 80 : 443;
+
+    fprintf(stderr, "Starting server on port %d\n", PORT);
+
     
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
