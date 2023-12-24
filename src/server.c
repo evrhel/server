@@ -531,7 +531,7 @@ static int handle_get(struct http_request *req, struct http_response *res) {
         res->status = 404;
         res->reason = "Not Found";
 
-        res->body = notfound;
+        res->body = strdup(notfound);
         res->content_length = sizeof(notfound);
         res->content_type = "text/html";
 
@@ -569,7 +569,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->status = 400;
             res->reason = "Bad Request";
 
-            res->body = badrequest;
+            res->body = strdup(badrequest);
             res->content_length = sizeof(badrequest);
             res->content_type = "text/html";
             return 0;
@@ -579,7 +579,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->status = 400;
             res->reason = "Bad Request";
 
-            res->body = badrequest;
+            res->body = strdup(badrequest);
             res->content_length = sizeof(badrequest);
             res->content_type = "text/html";
             return 0;
@@ -592,7 +592,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->status = 400;
             res->reason = "Bad Request";
 
-            res->body = badrequest;
+            res->body = strdup(badrequest);
             res->content_length = sizeof(badrequest);
             res->content_type = "text/html";
             return 0;
@@ -602,7 +602,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->status = 401;
             res->reason = "Unauthorized";
 
-            res->body = unauthorized;
+            res->body = strdup(unauthorized);
             res->content_length = sizeof(unauthorized);
             res->content_type = "text/html";
             return 0;
@@ -634,7 +634,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->reason = "Unauthorized";
             map_free(cookies);
 
-            res->body = unauthorized;
+            res->body = strdup(unauthorized);
             res->content_length = sizeof(unauthorized);
             res->content_type = "text/html";
             return 0;
@@ -648,7 +648,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->reason = "Unauthorized";
             map_free(cookies);
 
-            res->body = unauthorized;
+            res->body = strdup(unauthorized);
             res->content_length = sizeof(unauthorized);
             res->content_type = "text/html";
             return 0;
@@ -680,7 +680,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->reason = "Unauthorized";
             map_free(cookies);
 
-            res->body = unauthorized;
+            res->body = strdup(unauthorized);
             res->content_length = sizeof(unauthorized);
             res->content_type = "text/html";
             return 0;
@@ -692,7 +692,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
             res->reason = "Unauthorized";
             map_free(cookies);
 
-            res->body = unauthorized;
+            res->body = strdup(unauthorized);
             res->content_length = sizeof(unauthorized);
             res->content_type = "text/html";
             return 0;
@@ -712,7 +712,7 @@ static int handle_post(struct http_request *req, struct http_response *res) {
     res->status = 404;
     res->reason = "Not Found";
 
-    res->body = notfound;
+    res->body = strdup(notfound);
     res->content_length = sizeof(notfound);
     res->content_type = "text/html";
     return 0;

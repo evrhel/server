@@ -349,6 +349,8 @@ user_status_t logout(const char *token) {
     sqlite3_free(sql);
     sqlite3_close(db);
 
+    fprintf(stderr, "Logged out\n");
+
     return USER_OK;
 }
 

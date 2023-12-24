@@ -48,7 +48,7 @@ struct http_response {
     const char *reason;
     map_t *headers;
     list_t *cookies;
-    const char *body;
+    char *body;
 
     // basic header fields for convenience
     int content_length;

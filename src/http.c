@@ -191,6 +191,8 @@ void http_response_release(struct http_response *res) {
     if (!res) return;
     map_free(res->headers);
 
+    free(res->body);
+
     list_free(res->cookies, &free);
 }
 
