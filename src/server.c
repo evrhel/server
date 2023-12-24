@@ -352,7 +352,7 @@ static void serve() {
     int server_fd, client_fd;
     pid_t pid;
     SSL *ssl;
-
+    struct stream s;
 
     if (HTTP)
         ssl_ctx = 0;
@@ -372,8 +372,7 @@ static void serve() {
         PORT = HTTP ? 80 : 443;
 
     fprintf(stderr, "Starting server on port %d\n", PORT);
-
-    
+ 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         fprintf(stderr, "Fatal: Could not create socket: %s\n",  strerror(errno));
@@ -423,9 +422,13 @@ static void serve() {
                 ERR_print_errors_fp(stderr);
                 goto done;
             }
+
+            stream_wrap_ssl(&s, ssl);
+        } else {
+            stream_wrap_fd(&s, client_fd);
         }
         
-        req = http_request_read(client_fd, ssl);
+        req = http_request_read(&s);
         if (!req)
             goto done;
 
@@ -436,11 +439,10 @@ static void serve() {
             goto done;
         }
 
-        http_response_write(client_fd, &res, ssl);
+        http_response_write(&s, &res);
         http_response_release(&res);
 
         http_request_free(req);
-
 done:
         if (!HTTP) {
             SSL_shutdown(ssl);
@@ -457,6 +459,12 @@ static int handle_get(struct http_request *req, struct http_response *res) {
     char *data;
     int len;
     const char *content_type;
+    struct cookie cookie;
+
+    memset(&cookie, 0, sizeof(cookie));
+    cookie.value = "hello world";
+
+    http_response_add_cookie(res, "test", &cookie);
 
     data = read_resource(req->target, &len, &content_type);
     if (!data) {

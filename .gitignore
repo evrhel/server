@@ -11,6 +11,7 @@ server.dSYM
 *.tmp
 .deps
 .dirstamp
+.vscode
 build-aux
 aclocal.m4
 config.log

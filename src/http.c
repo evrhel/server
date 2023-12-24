@@ -8,28 +8,17 @@
 #include <unistd.h>
 
 #include "stream.h"
+#include "util.h"
 
-static int equncase(const char *s1, const char *s2) {
-    while (*s1 && *s2) {
-        if (*s1 != *s2 && *s1 != *s2 + 32 && *s1 != *s2 - 32)
-            return 0;
-        s1++;
-        s2++;
-    }
-    return *s1 == *s2;
+#define COOKIE_MAX_LEN 4096
+#define TMP_BUF_LEN 256
+
+static void on_update_headers(const char *key, void *old, void *cur) {
+    free(old);
 }
 
-static char *trim(char *str) {
-    char *end;
-
-    while (*str && isspace(*str)) str++;
-    if (!*str) return str;
-
-    end = str + strlen(str) - 1;
-    while (end > str && isspace(*end)) end--;
-    *(end + 1) = 0;
-
-    return str;
+static void on_update_cookies(const char *key, void *old, void *cur) {
+    free(old);
 }
 
 static int parse_startline(char *line, struct http_request *req) {
@@ -68,15 +57,16 @@ static int parse_startline(char *line, struct http_request *req) {
     return 0;
 }
 
-struct http_request *http_request_read(int fd, SSL *ssl) {
+struct http_request *http_request_read(struct stream *s) {
     char *line;
     struct http_request *req;
     size_t len;
     char *key, *value;
     char *tmp;
 
-    line = stream_readline(fd, LINE_CRLF, ssl);
-    if (!line) return NULL;
+    line = stream_readline(s, LINE_CRLF);
+    if (!line)
+        return NULL;
 
     req = calloc(1, sizeof(struct http_request));
 
@@ -86,10 +76,12 @@ struct http_request *http_request_read(int fd, SSL *ssl) {
         return NULL;
     }
 
+    req->headers = map_new(1, &on_update_headers);
+
     for (;;) {
         free(line);
 
-        line = stream_readline(fd, LINE_CRLF, ssl);
+        line = stream_readline(s, LINE_CRLF);
         if (!line) {
             http_request_free(req);
             return NULL;
@@ -117,18 +109,18 @@ struct http_request *http_request_read(int fd, SSL *ssl) {
         value = trim(tmp);
 
         // empty values are not allowed
-        if (strlen(value) == 0) {
+        if (!value || strlen(value) == 0) {
             free(line);
             http_request_free(req);
             return NULL;
         }
 
-        req->headers = http_header_set(req->headers, key, value);
+        map_set(req->headers, key, strdup(value));
     }
 
     free(line);
 
-    req->content_length = http_header_geti(req->headers, "Content-Length");
+    req->content_length = http_headers_geti(req->headers, "Content-Length");
     if (req->content_length) {
         req->body = malloc(req->content_length);
         if (!req->body) {
@@ -136,15 +128,15 @@ struct http_request *http_request_read(int fd, SSL *ssl) {
             return NULL;
         }
 
-        if (read(fd, req->body, req->content_length) < 0) {
+        if (s->read(s, req->body, req->content_length) < 0) {
             http_request_free(req);
             return NULL;
         }
     }
 
-    req->host = http_header_dup(req->headers, "Host");
-    req->user_agent = http_header_dup(req->headers, "User-Agent");
-    req->connection = http_header_dup(req->headers, "Connection");
+    req->host = http_headers_dup(req->headers, "Host");
+    req->user_agent = http_headers_dup(req->headers, "User-Agent");
+    req->connection = http_headers_dup(req->headers, "Connection");
 
     return req;
 }
@@ -164,28 +156,12 @@ static const char *methodstr(http_method_t method) {
     }
 }
 
-void http_request_print(struct http_request *req) {
-    struct http_header *header;
-
-    fprintf(stderr, "method: %s\n", methodstr(req->method));
-    fprintf(stderr, "target: %s\n", req->target);
-    fprintf(stderr, "version: %s\n", req->version);
-
-    header = req->headers;
-    while (header) {
-        fprintf(stderr, "%s: %s\n", header->key, header->value);
-        header = header->next;
-    }
-
-    fprintf(stderr, "body: %s\n", req->body);
-}
-
 void http_request_free(struct http_request *req) {
     if (!req) return;
 
     free(req->target);
     free(req->version);
-    http_header_free(req->headers);
+    map_free(req->headers);
     free(req->body);
     free(req->host);
     free(req->user_agent);
@@ -196,136 +172,178 @@ void http_request_free(struct http_request *req) {
 void http_response_init(struct http_response *res) {
     memset(res, 0, sizeof(struct http_response));
     res->version = HTTP11;
+    res->headers = map_new(1, &on_update_headers);
+    res->cookies = list_new();
 }
 
 void http_response_release(struct http_response *res) {
+    list_node_t *node;
+
     if (!res) return;
-    http_header_free(res->headers);
+    map_free(res->headers);
+
+    list_free(res->cookies, &free);
 }
 
-void http_response_write(int fd, struct http_response *res, SSL *ssl) {
+void http_response_write(struct stream *s, struct http_response *res) {
     char buf[256];
-    struct http_header *header;
-
-    snprintf(buf, sizeof(buf), "%s %d %s\r\n", res->version, res->status, res->reason);
-    if (ssl)
-        SSL_write(ssl, buf, strlen(buf));
-    else
-        write(fd, buf, strlen(buf));
-
-    if (res->content_length > 0)
-        snprintf(buf, sizeof(buf), "Content-Length: %d\r\n", res->content_length);
-
-    if (res->server)
-        snprintf(buf, sizeof(buf), "Server: %s\r\n", res->server);
-
-    if (res->content_type)
-        snprintf(buf, sizeof(buf), "Content-Type: %s\r\n", res->content_type);
-    
-    if (res->connection)
-        snprintf(buf, sizeof(buf), "Connection: %s\r\n", res->connection);
-
-    header = res->headers;
-    while (header) {
-        snprintf(buf, sizeof(buf), "%s: %s\r\n", header->key, header->value);
-        if (ssl)
-            SSL_write(ssl, buf, strlen(buf));
-        else
-            write(fd, buf, strlen(buf));
-        header = header->next;
-    }
-
-    if (ssl)
-        SSL_write(ssl, "\r\n", 2);
-    else
-        write(fd, "\r\n", 2);
-
-    if (res->body) {
-        if (ssl)
-            SSL_write(ssl, res->body, res->content_length);
-        else
-            write(fd, res->body, res->content_length);
-    }
-}
-
-char *http_header_get(struct http_header *headers, const char *key) {
-    while (headers) {
-        if (equncase(headers->key, key))
-            return headers->value;
-        headers = headers->next;
-    }
-    return NULL;
-}
-
-char *http_header_dup(struct http_header *headers, const char *key) {
+    list_node_t *node;
+    entry_t *entry;
     char *val;
 
-    val = http_header_get(headers, key);
+    // status line
+    stream_printf(s, "%s %d %s\r\n", res->version, res->status, res->reason);
+
+    if (res->content_length > 0)
+        stream_printf(s, "Content-Length: %d\r\n", res->content_length);
+
+    if (res->server)
+        stream_printf(s, "Server: %s\r\n", res->server);
+
+    if (res->content_type)
+        stream_printf(s, "Content-Type: %s\r\n", res->content_type);
+    
+    if (res->connection)
+        stream_printf(s, "Connection: %s\r\n", res->connection);
+
+    // cookies
+    fprintf(stderr, "writing cookies\r\n");
+    node = res->cookies->head;
+    while (node) {
+        stream_printf(s, "Set-Cookie: %s\r\n", (char *)node->data);
+        node = node->next;
+    }
+
+    // headers
+    node = res->headers->list->head;
+    while (node) {
+        entry = node->data;
+        stream_printf(s, "%s: %s\r\n", entry->key, (char *)entry->value);
+        node = node->next;
+    }
+
+    s->write(s, "\r\n", 2);
+
+    if (res->body)
+        s->write(s, res->body, res->content_length);
+}
+
+void http_response_add_cookie(struct http_response *res, const char *name, const struct cookie *cookie) {
+    char *value;
+
+    value = cookie_to_string(name, cookie);
+    if (!value) return;
+
+    list_push_front(res->cookies, value);
+}
+
+char *http_headers_get(map_t *headers, const char *key) {
+    return map_get(headers, key);
+}
+
+char *http_headers_dup(map_t *headers, const char *key) {
+    char *val;
+
+    val = map_get(headers, key);
     if (!val) return NULL;
 
     return strdup(val);
 }
 
-int http_header_geti(struct http_header *headers, const char *key) {
+int http_headers_geti(map_t *headers, const char *key) {
     char *val;
 
-    val = http_header_get(headers, key);
+    val = map_get(headers, key);
     if (!val) return 0;
 
     return atoi(val);
 }
 
-struct http_header *http_header_set(struct http_header *headers, const char *key, const char *value) {
-    struct http_header *header;
-    char *newval;
+map_t *parse_cookies(const char *str) {
+    map_t *cookies;
+    char *tmp, *key, *value;
 
-    if (!key || !value) return headers;
+    cookies = map_new(1, &on_update_cookies);
 
-    header = headers;
-    while (header) {
-        if (equncase(header->key, key)) {
-            if (header->value) {
-                free(header->value);
-                header->value = NULL;
-            }
+    if (!str) return cookies;
 
-            newval = strdup(value);
-            if (newval) 
-                header->value = newval;
+    tmp = strdup(str);
+    while (tmp) {
+        key = strsep(&tmp, ";");
+        if (!key) break;
 
-            return headers;
-        }
+        value = strchr(key, '=');
+        if (!value) break;
 
-        header = header->next;
+        *value = 0;
+        value++;
+
+        key = trim(key);
+        if (!key || strlen(key) == 0) continue;
+
+        value = trim(value);
+        if (!value || strlen(value) == 0) continue;
+
+        map_set(cookies, key, strdup(value));
     }
 
-    header = malloc(sizeof(struct http_header));
-    if (!header) return headers;
+    free(tmp);
 
-    header->key = strdup(key);
-    if (!header->key) {
-        free(header);
-        return headers;
-    }
-
-    header->value = strdup(value);
-    if (!header->value) {
-        free(header->key);
-        free(header);
-        return headers;
-    }
-
-    header->next = headers;
-    return header;
+    return cookies;
 }
 
-void http_header_free(struct http_header *headers) {
-    struct http_header *next;
-    while (headers) {
-        next = headers->next;
-        free(headers->key);
-        free(headers->value);
-        free(headers);
-        headers = next;
+char *cookie_to_string(const char *name, const struct cookie *cookie) {
+    char *result;
+    char tmp[TMP_BUF_LEN];
+    char date_str[64];
+    time_t t;
+
+    if (!name || !cookie || !cookie->value) return NULL;
+
+    result = malloc(COOKIE_MAX_LEN);
+    if (!result) return NULL;
+
+    strncpy(result, name, COOKIE_MAX_LEN);
+    strncat(result, "=", COOKIE_MAX_LEN);
+
+    strncat(result, cookie->value, COOKIE_MAX_LEN);
+
+    if (cookie->path) {
+        strncat(result, "; Path=", COOKIE_MAX_LEN);
+        strncat(result, cookie->path, COOKIE_MAX_LEN);
     }
+
+    if (cookie->domain) {
+        strncat(result, "; Domain=", COOKIE_MAX_LEN);
+        strncat(result, cookie->domain, COOKIE_MAX_LEN);
+    }
+
+    if (cookie->expires > 0) {
+        t = cookie->expires;
+        strftime(date_str, 64, "%a, %d %b %Y %H:%M:%S GMT", gmtime(&t));
+        snprintf(tmp, TMP_BUF_LEN, "; Expires=%s", date_str);
+        strncat(result, tmp, COOKIE_MAX_LEN);
+    }
+
+    if (cookie->secure)
+        strncat(result, "; Secure", COOKIE_MAX_LEN);
+
+    if (cookie->http_only)
+        strncat(result, "; HttpOnly", COOKIE_MAX_LEN);
+    
+    switch (cookie->samesite) {
+    case SAMESITE_STRICT:
+        strncat(result, "; SameSite=Strict", COOKIE_MAX_LEN);
+        break;
+    case SAMESITE_LAX:
+        strncat(result, "; SameSite=Lax", COOKIE_MAX_LEN);
+        break;
+    case SAMESITE_NONE:
+        strncat(result, "; SameSite=None", COOKIE_MAX_LEN);
+        break;
+    default:
+        break;
+    }
+
+    return result;
 }

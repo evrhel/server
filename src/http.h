@@ -6,6 +6,9 @@
 
 #include <openssl/ssl.h>
 
+#include "util.h"
+#include "stream.h"
+
 typedef enum {
     GET,
     POST,
@@ -13,17 +16,18 @@ typedef enum {
     DELETE
 } http_method_t;
 
-struct http_header {
-    char *key;
-    char *value;
-    struct http_header *next;
-};
+typedef enum {
+    SAMESITE_UNSPECIFIED,
+    SAMESITE_NONE,
+    SAMESITE_LAX,
+    SAMESITE_STRICT
+} samesite_t;
 
 struct http_request {
     http_method_t method;
     char *target;
     char *version;
-    struct http_header *headers;
+    map_t *headers;
     char *body;
 
     // basic header fields for convenience
@@ -37,7 +41,8 @@ struct http_response {
     const char *version;
     int status;
     const char *reason;
-    struct http_header *headers;
+    map_t *headers;
+    list_t *cookies;
     const char *body;
 
     // basic header fields for convenience
@@ -47,18 +52,31 @@ struct http_response {
     const char *connection;
 };
 
-struct http_request *http_request_read(int fd, SSL *ssl);
-void http_request_print(struct http_request *req);
+struct cookie {
+    char *value;
+    char *path;
+    char *domain;
+    long long expires;
+    int secure;
+    int http_only;
+    samesite_t samesite;
+};
+
+struct http_request *http_request_read(struct stream *s);
 void http_request_free(struct http_request *req);
 
 void http_response_init(struct http_response *res);
 void http_response_release(struct http_response *res);
-void http_response_write(int fd, struct http_response *res, SSL *ssl);
+void http_response_write(struct stream *s, struct http_response *res);
+void http_response_add_cookie(struct http_response *res, const char *name, const struct cookie *cookie);
 
-char *http_header_get(struct http_header *headers, const char *key);
-char *http_header_dup(struct http_header *headers, const char *key);
-int http_header_geti(struct http_header *headers, const char *key);
-struct http_header *http_header_set(struct http_header *headers, const char *key, const char *value);
-void http_header_free(struct http_header *headers);
+char *http_headers_get(map_t *headers, const char *key);
+char *http_headers_dup(map_t *headers, const char *key);
+int http_headers_geti(map_t *headers, const char *key);
+
+// parse cookie from an http request (Cookie header)
+map_t *parse_cookies(const char *str);
+
+char *cookie_to_string(const char *name, const struct cookie *cookie);
 
 #endif
