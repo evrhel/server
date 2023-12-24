@@ -18,6 +18,7 @@
 #include "stream.h"
 #include "resource.h"
 #include "user.h"
+#include "cJSON.h"
 
 #define DEF_MAX_PENDING 10
 #define DEF_WEBROOT "./webroot/"
@@ -36,6 +37,42 @@ static const char notfound[] =
 "</body>"
 "</html>";
 
+static const char unauthorized[] =
+"<!DOCTYPE html>"
+"<html>"
+"<head>"
+"<title>401 Unauthorized</title>"
+"</head>"
+"<body>"
+"<h1>401 Unauthorized</h1>"
+"<p>You are not authorized to access this page.</p>"
+"</body>"
+"</html>";
+
+static const char forbidden[] =
+"<!DOCTYPE html>"
+"<html>"
+"<head>"
+"<title>403 Forbidden</title>"
+"</head>"
+"<body>"
+"<h1>403 Forbidden</h1>"
+"<p>You are not authorized to access this page.</p>"
+"</body>"
+"</html>";
+
+static const char badrequest[] =
+"<!DOCTYPE html>"
+"<html>"
+"<head>"
+"<title>400 Bad Request</title>"
+"</head>"
+"<body>"
+"<h1>400 Bad Request</h1>"
+"<p>Your browser sent a request that this server could not understand.</p>"
+"</body>"
+"</html>";
+
 static char *WEBROOT;
 static int PORT = -1;
 static int MAX_PENDING = DEF_MAX_PENDING;
@@ -49,6 +86,7 @@ static SSL_CTX *ssl_ctx = NULL;
 static int server_fd = -1;
 
 static void serve();
+static int handle_client_connection(struct stream *s);
 static int handle_request(struct http_request *req, struct http_response *res);
 
 static void sigint_handler(int signum) {
@@ -94,6 +132,7 @@ static void user_help() {
     fprintf(stderr, "  add <username>              Add a user\n");
     fprintf(stderr, "  remove <username>           Remove a user\n");
     fprintf(stderr, "  login <username>            Login as a user\n");
+    fprintf(stderr, "  logout <token>              Logout a user\n");
     fprintf(stderr, "  validate <token>            Validate a token\n");
     fprintf(stderr, "  help                        Display this help message\n");
 }
@@ -150,8 +189,6 @@ static void handle_args(int argc, char *argv[]) {
             action = argv[++i];
 
             if (!strcmp(action, "add")) {
-                char tmp[512];
-
                 if (i + 1 >= argc) {
                     fprintf(stderr, "Fatal: -u add requires a username\n");
                     exit(1);
@@ -238,6 +275,24 @@ static void handle_args(int argc, char *argv[]) {
                 fprintf(stderr, "Token: %s\n", token);
 
                 free(token);
+                exit(0);
+            } else if (!strcmp(argv[i], "logout")) {
+                if (i + 1 >= argc) {
+                    fprintf(stderr, "Fatal: -u logout requires a token\n");
+                    exit(1);
+                }
+
+                status = logout(argv[++i]);
+
+                if (status == USER_NOT_FOUND) {
+                    fprintf(stderr, "Fatal: User not found\n");
+                    exit(1);
+                } else if (status != USER_OK) {
+                    fprintf(stderr, "Fatal: Could not logout\n");
+                    exit(1);
+                }
+
+                fprintf(stderr, "Logged out successfully\n");
                 exit(0);
             } else if (!strcmp(argv[i], "validate")) {
                 if (i + 1 >= argc) {
@@ -344,8 +399,6 @@ int main(int argc, char *argv[]) {
 }
 
 static void serve() {
-    struct http_request *req;
-    struct http_response res;
     struct sockaddr_in addr;
     struct sockaddr_storage client_addr;
     socklen_t client_addr_len;
@@ -427,22 +480,8 @@ static void serve() {
         } else {
             stream_wrap_fd(&s, client_fd);
         }
-        
-        req = http_request_read(&s);
-        if (!req)
-            goto done;
-
-        http_response_init(&res);
-        if (handle_request(req, &res) < 0) {
-            http_response_release(&res);
-            http_request_free(req);
-            goto done;
-        }
-
-        http_response_write(&s, &res);
-        http_response_release(&res);
-
-        http_request_free(req);
+    
+        handle_client_connection(&s);
 done:
         if (!HTTP) {
             SSL_shutdown(ssl);
@@ -455,17 +494,38 @@ done:
     }
 }
 
+static int handle_client_connection(struct stream *s) {
+    struct http_request *req;
+    struct http_response res;
+    int keep_alive = 0;
+
+    do {
+        req = http_request_read(s);
+        if (!req) break;
+
+        keep_alive = req->connection == CONNECTION_KEEP_ALIVE;
+
+        http_response_init(&res);
+        if (handle_request(req, &res) < 0) {
+            http_response_release(&res);
+            http_request_free(req);
+            break;
+        }
+
+        http_response_write(s, &res);
+        http_response_release(&res);
+
+        http_request_free(req);
+    } while (keep_alive);
+
+    return 0;
+}
+
 static int handle_get(struct http_request *req, struct http_response *res) {
     char *data;
     int len;
     const char *content_type;
-    struct cookie cookie;
-
-    memset(&cookie, 0, sizeof(cookie));
-    cookie.value = "hello world";
-
-    http_response_add_cookie(res, "test", &cookie);
-
+    
     data = read_resource(req->target, &len, &content_type);
     if (!data) {
         res->status = 404;
@@ -488,10 +548,185 @@ static int handle_get(struct http_request *req, struct http_response *res) {
     return 0;
 }
 
+static int handle_post(struct http_request *req, struct http_response *res) {
+    struct cookie cookie;
+    cJSON *json;
+    char *username, *password;
+    map_t *cookies;
+    char *token;
+    struct userinfo ui;
+    int rc;
+    char buf[1024];
+
+    res->status = 200;
+    res->reason = "OK";
+
+    memset(&cookie, 0, sizeof(cookie));
+
+    if (equncase(req->target, "/app/login")) {
+        json = cJSON_Parse(req->body);
+        if (!json) {
+            res->status = 400;
+            res->reason = "Bad Request";
+
+            res->body = badrequest;
+            res->content_length = sizeof(badrequest);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        if (!cJSON_HasObjectItem(json, "username") || !cJSON_HasObjectItem(json, "password")) {
+            res->status = 400;
+            res->reason = "Bad Request";
+
+            res->body = badrequest;
+            res->content_length = sizeof(badrequest);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        username = cJSON_GetObjectItem(json, "username")->valuestring;
+        password = cJSON_GetObjectItem(json, "password")->valuestring;
+
+        if (!username || !password) {
+            res->status = 400;
+            res->reason = "Bad Request";
+
+            res->body = badrequest;
+            res->content_length = sizeof(badrequest);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        if (login(username, password, &cookie.value) != USER_OK) {
+            res->status = 401;
+            res->reason = "Unauthorized";
+
+            res->body = unauthorized;
+            res->content_length = sizeof(unauthorized);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        cookie.expires = time(NULL) + SESSION_TIMEOUT;
+        cookie.path = "/";
+        cookie.domain = NULL;
+        cookie.secure = 1;
+        cookie.http_only = 1;
+
+        http_response_add_cookie(res, "auth", &cookie);
+
+        cJSON_Delete(json);
+
+        res->body = strdup("{}");
+        res->content_length = strlen(res->body);
+        res->content_type = "application/json";
+
+        return 0;
+    } else if (equncase(req->target, "/app/logout")) {
+        cookies = parse_cookies(http_headers_get(req->headers, "Cookie"));
+
+        token = map_get(cookies, "auth");
+        if (!token) {
+            fprintf(stderr, "No token\n");
+
+            res->status = 401;
+            res->reason = "Unauthorized";
+            map_free(cookies);
+
+            res->body = unauthorized;
+            res->content_length = sizeof(unauthorized);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        rc = validate_token(token, &ui);
+        if (!rc) {
+            fprintf(stderr, "Invalid token\n");
+
+            res->status = 401;
+            res->reason = "Unauthorized";
+            map_free(cookies);
+
+            res->body = unauthorized;
+            res->content_length = sizeof(unauthorized);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        logout(token);
+
+        cookie.expires = time(NULL) - 1;
+        cookie.path = "/";
+        cookie.domain = NULL;
+        cookie.secure = 1;
+        cookie.http_only = 1;
+
+        http_response_add_cookie(res, "auth", &cookie);
+
+        map_free(cookies);
+
+        res->body = strdup("{}");
+        res->content_length = strlen(res->body);
+        res->content_type = "application/json";
+
+        return 0;
+    } else if (equncase(req->target, "/app/user")) {
+        cookies = parse_cookies(http_headers_get(req->headers, "Cookie"));
+
+        token = map_get(cookies, "auth");
+        if (!token) {
+            res->status = 401;
+            res->reason = "Unauthorized";
+            map_free(cookies);
+
+            res->body = unauthorized;
+            res->content_length = sizeof(unauthorized);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        rc = validate_token(token, &ui);
+        if (!rc) {
+            res->status = 401;
+            res->reason = "Unauthorized";
+            map_free(cookies);
+
+            res->body = unauthorized;
+            res->content_length = sizeof(unauthorized);
+            res->content_type = "text/html";
+            return 0;
+        }
+
+        snprintf(buf, sizeof(buf), "{\"username\":\"%s\"}", ui.username);
+
+        res->body = strdup(buf);
+        res->content_length = strlen(res->body);
+        res->content_type = "application/json";
+
+        map_free(cookies);
+
+        return 0;
+    }
+
+    res->status = 404;
+    res->reason = "Not Found";
+
+    res->body = notfound;
+    res->content_length = sizeof(notfound);
+    res->content_type = "text/html";
+    return 0;
+}
+
 static int handle_request(struct http_request *req, struct http_response *res) {
+    res->connection = req->connection;
+
     switch (req->method) {
     case GET:
         return handle_get(req, res);
+        break;
+    case POST:
+        return handle_post(req, res);
         break;
     default:
         res->status = 405;

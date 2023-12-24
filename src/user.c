@@ -171,6 +171,9 @@ user_status_t add_user(const char *username, char *password) {
         return USER_ERROR;
     }
 
+    sqlite3_free(sql);
+    sqlite3_close(db);
+
     return USER_OK;
 }
 
@@ -251,6 +254,9 @@ user_status_t change_password(const char *username, char *new_password) {
         return USER_ERROR;
     }
 
+    sqlite3_free(sql);
+    sqlite3_close(db);
+
     return USER_OK;
 }
 
@@ -310,12 +316,14 @@ user_status_t login(const char *username, char *password, char **token) {
 
     rc = sqlite3_exec(db, sql, NULL, 0, &err);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "SQL error: %s\n", err);
         free(*token);
         sqlite3_free(sql);
         sqlite3_close(db);
         return USER_ERROR;
     }
+
+    sqlite3_free(sql);
+    sqlite3_close(db);
     
     return USER_OK;
 }
@@ -329,7 +337,7 @@ user_status_t logout(const char *token) {
     if (rc)
         return USER_ERROR;
 
-    sql = sqlite3_mprintf("DELETE FROM sessions WHERE token=%lu", token);
+    sql = sqlite3_mprintf("DELETE FROM sessions WHERE token='%q'", token);
 
     rc = sqlite3_exec(db, sql, NULL, 0, NULL);
     if (rc != SQLITE_OK) {

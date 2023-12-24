@@ -1,6 +1,8 @@
 server
 sqlite3.c
 sqlite3.h
+cJSON.c
+cJSON.h
 server.dSYM
 .DS_Store
 *.o

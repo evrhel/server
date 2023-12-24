@@ -17,6 +17,11 @@ typedef enum {
 } http_method_t;
 
 typedef enum {
+    CONNECTION_CLOSE,
+    CONNECTION_KEEP_ALIVE
+} connection_t;
+
+typedef enum {
     SAMESITE_UNSPECIFIED,
     SAMESITE_NONE,
     SAMESITE_LAX,
@@ -34,7 +39,7 @@ struct http_request {
     int content_length;
     char *host;
     char *user_agent;
-    char *connection;
+    connection_t connection;
 };
 
 struct http_response {
@@ -49,7 +54,7 @@ struct http_response {
     int content_length;
     const char *server;
     const char *content_type;
-    const char *connection;
+    connection_t connection;
 };
 
 struct cookie {

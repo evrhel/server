@@ -7,6 +7,31 @@
     <body>
         <h1>Index</h1>
         <p>Index page</p>
-        <img src="michael.gif" alt="test">
+        <p><img src="michael.gif" alt="michael"></p>
+
+        <!-- login form -->
+        <div id="login-container" hidden>
+            <form onsubmit="submitLoginForm(event)">
+                <label for="username">Username:</label>
+                <input type="text" id="username" required><br>
+                
+                <label for="password">Password:</label>
+                <input type="password" id="password" required><br>
+                
+                <input type="submit" value="Login">
+            </form>
+        </div>
+
+        <!-- user info -->
+        <div id="user-info-container" hidden>
+            <p>Username: <span id="info-username"></span></p>
+        </div>
+
+        <!-- logout form -->
+        <div id="logout-container" hidden>
+            <button onclick="logout()">Logout</button>
+        </div>
+
+        <script src="index.js"></script>
     </body>
 </html>

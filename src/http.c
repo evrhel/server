@@ -136,7 +136,15 @@ struct http_request *http_request_read(struct stream *s) {
 
     req->host = http_headers_dup(req->headers, "Host");
     req->user_agent = http_headers_dup(req->headers, "User-Agent");
-    req->connection = http_headers_dup(req->headers, "Connection");
+
+    tmp = http_headers_get(req->headers, "Connection");
+    req->connection = CONNECTION_CLOSE;
+    if (tmp) {
+        if (equncase(tmp, "keep-alive"))
+            req->connection = CONNECTION_KEEP_ALIVE;
+        else if (equncase(tmp, "close"))
+            req->connection = CONNECTION_CLOSE;
+    }
 
     return req;
 }
@@ -165,7 +173,6 @@ void http_request_free(struct http_request *req) {
     free(req->body);
     free(req->host);
     free(req->user_agent);
-    free(req->connection);
     free(req);
 }
 
@@ -174,6 +181,8 @@ void http_response_init(struct http_response *res) {
     res->version = HTTP11;
     res->headers = map_new(1, &on_update_headers);
     res->cookies = list_new();
+    res->server = "My Server";
+    res->connection = CONNECTION_CLOSE;
 }
 
 void http_response_release(struct http_response *res) {
@@ -194,7 +203,7 @@ void http_response_write(struct stream *s, struct http_response *res) {
     // status line
     stream_printf(s, "%s %d %s\r\n", res->version, res->status, res->reason);
 
-    if (res->content_length > 0)
+    if (res->body && res->content_length > 0)
         stream_printf(s, "Content-Length: %d\r\n", res->content_length);
 
     if (res->server)
@@ -202,12 +211,19 @@ void http_response_write(struct stream *s, struct http_response *res) {
 
     if (res->content_type)
         stream_printf(s, "Content-Type: %s\r\n", res->content_type);
-    
-    if (res->connection)
-        stream_printf(s, "Connection: %s\r\n", res->connection);
 
-    // cookies
-    fprintf(stderr, "writing cookies\r\n");
+    switch (res->connection) {
+    case CONNECTION_KEEP_ALIVE:
+        stream_printf(s, "Connection: keep-alive\r\n");
+        break;
+    case CONNECTION_CLOSE:
+        stream_printf(s, "Connection: close\r\n");
+        break;
+    default:
+        break;
+    };
+
+    // cookiesc
     node = res->cookies->head;
     while (node) {
         stream_printf(s, "Set-Cookie: %s\r\n", (char *)node->data);
@@ -224,7 +240,7 @@ void http_response_write(struct stream *s, struct http_response *res) {
 
     s->write(s, "\r\n", 2);
 
-    if (res->body)
+    if (res->body && res->content_length > 0)
         s->write(s, res->body, res->content_length);
 }
 

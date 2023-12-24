@@ -18,7 +18,8 @@ mv sqlite-amalgamation-3290000/sqlite3.h src/sqlite3.h
 rm -rf sqlite-amalgamation-3290000
 rm sqlite.zip
 
-#PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.0])
+wget -O src/cJSON.h https://raw.githubusercontent.com/DaveGamble/cJSON/v1.7.12/cJSON.h
+wget -O src/cJSON.c https://raw.githubusercontent.com/DaveGamble/cJSON/v1.7.12/cJSON.c
 
 AC_CONFIG_FILES([Makefile])
 

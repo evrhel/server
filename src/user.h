@@ -9,11 +9,11 @@
 #define PASS_LEN 32
 
 // length of a token in bytes
-#define TOKEN_LEN 32
+#define TOKEN_LEN 24
 
-// The maximum number of milliseconds a session can be inactive before it is
+// The maximum number of seconds a session can be inactive before it is
 // invalidated
-#define SESSION_TIMEOUT (60ll * 60ll * 1000ll)
+#define SESSION_TIMEOUT (60ll * 60ll)
 
 typedef enum {
     USER_OK,                // everything is ok
